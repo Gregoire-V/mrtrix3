@@ -16,6 +16,21 @@
 
 #pragma once
 
-#include "math/ZSH_helpers.h"
-#include "math/ZSH_functions.h"
-#include "math/ZSH_transform.h"
+#include <string>
+
+#include "exception.h"
+#include "math/least_squares.h"
+#include "math/legendre.h"
+#include "mrtrix.h"
+
+namespace MR::Math::SH {
+
+//! used to speed up SH calculation
+template <typename ValueType> class PrecomputedFraction {
+public:
+  PrecomputedFraction() : f1(0.0), f2(0.0) {}
+  ValueType f1, f2;
+  typename std::vector<ValueType>::const_iterator p1, p2;
+};
+
+} // namespace MR::Math::SH

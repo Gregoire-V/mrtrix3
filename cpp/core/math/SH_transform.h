@@ -16,13 +16,26 @@
 
 #pragma once
 
-#include "math/SH_aDF.h"
-#include "math/SH_apodized_base.h"
-#include "math/SH_aPSF.h"
-#include "math/SH_functions.h"
-#include "math/SH_helpers.h"
-#include "math/SH_precomputed_all.h"
-#include "math/SH_precomputed_fraction.h"
-#include "math/SH_transform.h"
+#include <string>
+
 #include "math/SH_transform_base.h"
-#include "math/SH_weighted_transform.h"
+#include "exception.h"
+#include "math/least_squares.h"
+#include "math/legendre.h"
+#include "mrtrix.h"
+
+namespace MR::Math::SH {
+
+template <typename ValueType> class Transform : public TransformBase<ValueType> {
+public:
+  template <class MatrixType> Transform(const MatrixType &dirs, int lmax) : TransformBase<ValueType>(dirs, lmax) {
+    TransformBase<ValueType>::iSHT = pinv(TransformBase<ValueType>::SHT);
+  }
+
+  template <class VectorType> void set_filter(const VectorType &filter) {
+    scale_degrees_forward(TransformBase<ValueType>::SHT, invert(filter));
+    scale_degrees_inverse(TransformBase<ValueType>::iSHT, filter);
+  }
+};
+
+} // namespace MR::Math::SH

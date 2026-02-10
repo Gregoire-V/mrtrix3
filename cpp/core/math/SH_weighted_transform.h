@@ -16,6 +16,22 @@
 
 #pragma once
 
-#include "math/ZSH_helpers.h"
-#include "math/ZSH_functions.h"
-#include "math/ZSH_transform.h"
+#include <string>
+
+#include "exception.h"
+#include "math/least_squares.h"
+#include "math/legendre.h"
+#include "mrtrix.h"
+
+namespace MR::Math::SH {
+
+template <typename ValueType> class WeightedTransform : public TransformBase<ValueType> {
+public:
+  template <class MatrixType, class VectorType>
+  WeightedTransform(const MatrixType &dirs, const VectorType &weights, int lmax)
+      : TransformBase<ValueType>(dirs, lmax) {
+    TransformBase<ValueType>::iSHT = wls(TransformBase<ValueType>::SHT, weights);
+  }
+};
+
+} // namespace MR::Math::SH

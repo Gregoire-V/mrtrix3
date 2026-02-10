@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <Eigen/Dense>
+
 #include "math/SH_aDF.h"
 #include "math/SH_apodized_base.h"
 #include "math/SH_aPSF.h"
@@ -26,3 +28,25 @@
 #include "math/SH_transform.h"
 #include "math/SH_transform_base.h"
 #include "math/SH_weighted_transform.h"
+#include "math/least_squares.h"
+#include "math/legendre.h"
+
+namespace MR::Math::ZSH {
+
+/** \defgroup zonal_spherical_harmonics Zonal Spherical Harmonics
+ * \brief Classes & functions to manage zonal spherical harmonics
+ * (spherical harmonic functions containing only m=0 terms). */
+
+/** \addtogroup zonal_spherical_harmonics
+ * @{ */
+
+//! the number of (even-degree) coefficients for the given value of \a lmax
+inline size_t NforL(int lmax) { return (1 + lmax / 2); }
+
+//! compute the index for coefficient l
+inline size_t index(int l) { return (l / 2); }
+
+//! returns the largest \e lmax given \a N parameters
+inline size_t LforN(int N) { return (2 * (N - 1)); }
+
+} // namespace MR::Math::ZSH
