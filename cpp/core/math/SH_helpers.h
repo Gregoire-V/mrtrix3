@@ -37,20 +37,27 @@ namespace MR::Math::SH {
 extern const std::string encoding_description;
 
 //! the number of coefficients for the given value of \a lmax
-inline size_t NforL(int lmax) { return (lmax + 1) * (lmax + 2) / 2; }
+inline size_t NforL(int lmax, bool sym = true) { return sym ? (lmax + 1) * (lmax + 2) / 2 : (lmax + 1) * (lmax + 1); }
 
 //! compute the index for coefficient (l,m)
-inline size_t index(int l, int m) { return l * (l + 1) / 2 + m; }
+inline size_t index(int l, int m, bool sym = true) { return sym ? l * (l + 1) / 2 + m : l * (l + 1) + m; }
 
 //! same as NforL(), but consider only non-negative orders \e m
-inline size_t NforL_mpos(int lmax) { return (lmax / 2 + 1) * (lmax / 2 + 1); }
+inline size_t NforL_mpos(int lmax, bool sym = true) { return sym ? (lmax / 2 + 1) * (lmax / 2 + 1) : (lmax + 1) * (lmax + 2) / 2; }
 
 //! same as index(), but consider only non-negative orders \e m
-inline size_t index_mpos(int l, int m) { return l * l / 4 + m; }
+inline size_t index_mpos(int l, int m, bool sym = true) { return sym ? l * l / 4 + m : l * (l + 1) / 2 + m; }
 
 //! returns the largest \e lmax given \a N parameters
-inline size_t LforN(int N) { 
-  return N ? 2 * std::floor<size_t>((std::sqrt(static_cast<default_type>(1 + 8 * N)) - 3.0) / 4.0) : 0; 
+inline size_t LforN(int N, bool sym = true) { 
+  if (sym)
+  {
+    return N ? 2 * std::floor<size_t>((std::sqrt(static_cast<default_type>(1 + 8 * N)) - 3.0) / 4.0) : 0;
+  }
+  else
+  {
+    return N ? std::floor(std::sqrt(N)) - 1 : 0;
+  } 
 }
 
 //! returns whether a cardinality is commensurate with a set of SH coefficients
