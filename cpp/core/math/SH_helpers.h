@@ -61,7 +61,7 @@ inline size_t LforN(int N, bool sym = true) {
 }
 
 //! returns whether a cardinality is commensurate with a set of SH coefficients
-inline bool feasible_N(int N) { return NforL(LforN(N)) == N; }
+inline bool feasible_N(int N, bool sym = true) { return NforL(LforN(N, sym), sym) == N; }
 
 /* Never used, so could be removed
 namespace {
