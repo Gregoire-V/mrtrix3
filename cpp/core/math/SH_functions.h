@@ -18,9 +18,9 @@
 
 #include <string>
 
+#include "exception.h"
 #include "math/SH_helpers.h"
 #include "math/SH_precomputed_all.h"
-#include "exception.h"
 #include "math/least_squares.h"
 #include "math/legendre.h"
 #include "mrtrix.h"
@@ -32,24 +32,25 @@ namespace MR::Math::SH {
  * coefficients up to maximum harmonic degree \a lmax onto directions \a
  * dirs (in spherical coordinates, with columns [ azimuth inclination ]). */
 template <class MatrixType>
-Eigen::Matrix<typename MatrixType::Scalar, Eigen::Dynamic, Eigen::Dynamic> init_transform(const MatrixType &dirs,
-                                                                                          const int lmax) {
+Eigen::Matrix<typename MatrixType::Scalar, Eigen::Dynamic, Eigen::Dynamic>
+init_transform(const MatrixType &dirs, const int lmax, bool sym = true) {
   using namespace Eigen;
   using value_type = typename MatrixType::Scalar;
+  ssize_t l_step = (sym ? 2 : 1);
   if (dirs.cols() != 2)
     throw Exception("direction matrix should have 2 columns: [ azimuth inclination ]");
-  Matrix<value_type, Dynamic, Dynamic> SHT(dirs.rows(), NforL(lmax));
+  Matrix<value_type, Dynamic, Dynamic> SHT(dirs.rows(), NforL(lmax, sym));
   Matrix<value_type, Dynamic, 1, 0, 64> AL(lmax + 1);
   for (ssize_t i = 0; i < dirs.rows(); i++) {
     const value_type z = std::cos(dirs(i, 1));
     Legendre::Plm_sph(AL, lmax, 0, z);
-    for (int l = 0; l <= lmax; l += 2)
-      SHT(i, index(l, 0)) = AL[l];
+    for (int l = 0; l <= lmax; l += l_step)
+      SHT(i, index(l, 0, sym)) = AL[l];
     for (int m = 1; m <= lmax; m++) {
       Legendre::Plm_sph(AL, lmax, m, z);
-      for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2) {
-        SHT(i, index(l, m)) = Math::sqrt2 * AL[l] * std::cos(m * dirs(i, 0));
-        SHT(i, index(l, -m)) = Math::sqrt2 * AL[l] * std::sin(m * dirs(i, 0));
+      for (int l = (sym && (m & 1) ? m + 1 : m); l <= lmax; l += l_step) {
+        SHT(i, index(l, m, sym)) = Math::sqrt2 * AL[l] * std::cos(m * dirs(i, 0));
+        SHT(i, index(l, -m, sym)) = Math::sqrt2 * AL[l] * std::sin(m * dirs(i, 0));
       }
     }
   }
@@ -61,13 +62,14 @@ Eigen::Matrix<typename MatrixType::Scalar, Eigen::Dynamic, Eigen::Dynamic> init_
  * coefficients up to maximum harmonic degree \a lmax onto directions \a
  * dirs (in cartesian coordinates, with columns [ x y z ] ans normalised). */
 template <class MatrixType>
-Eigen::Matrix<typename MatrixType::Scalar, Eigen::Dynamic, Eigen::Dynamic> init_transform_cart(const MatrixType &dirs,
-                                                                                               const int lmax) {
+Eigen::Matrix<typename MatrixType::Scalar, Eigen::Dynamic, Eigen::Dynamic>
+init_transform_cart(const MatrixType &dirs, const int lmax, bool sym = true) {
   using namespace Eigen;
   using value_type = typename MatrixType::Scalar;
+  ssize_t l_step = (sym ? 2 : 1);
   if (dirs.cols() != 3)
     throw Exception("direction matrix should have 3 columns: [ x y z ]");
-  Matrix<value_type, Dynamic, Dynamic> SHT(dirs.rows(), NforL(lmax));
+  Matrix<value_type, Dynamic, Dynamic> SHT(dirs.rows(), NforL(lmax, sym));
   Matrix<value_type, Dynamic, 1, 0, 64> AL(lmax + 1);
   for (ssize_t i = 0; i < dirs.rows(); i++) {
     value_type z = dirs(i, 2);
@@ -75,16 +77,16 @@ Eigen::Matrix<typename MatrixType::Scalar, Eigen::Dynamic, Eigen::Dynamic> init_
     value_type cp = (rxy) ? dirs(i, 0) / rxy : 1.0;
     value_type sp = (rxy) ? dirs(i, 1) / rxy : 0.0;
     Legendre::Plm_sph(AL, lmax, 0, z);
-    for (int l = 0; l <= lmax; l += 2)
-      SHT(i, index(l, 0)) = AL[l];
+    for (int l = 0; l <= lmax; l += l_step)
+      SHT(i, index(l, 0, sym)) = AL[l];
     value_type c0(1.0), s0(0.0);
     for (int m = 1; m <= lmax; m++) {
       Legendre::Plm_sph(AL, lmax, m, z);
       value_type c = c0 * cp - s0 * sp;
       value_type s = s0 * cp + c0 * sp;
-      for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2) {
-        SHT(i, index(l, m)) = Math::sqrt2 * AL[l] * c;
-        SHT(i, index(l, -m)) = Math::sqrt2 * AL[l] * s;
+      for (int l = (sym && (m & 1) ? m + 1 : m); l <= lmax; l += l_step) {
+        SHT(i, index(l, m, sym)) = Math::sqrt2 * AL[l] * c;
+        SHT(i, index(l, -m, sym)) = Math::sqrt2 * AL[l] * s;
       }
       c0 = c;
       s0 = s;
@@ -95,12 +97,13 @@ Eigen::Matrix<typename MatrixType::Scalar, Eigen::Dynamic, Eigen::Dynamic> init_
 
 //! scale the coefficients of each SH degree by the corresponding value in \a coefs
 template <class MatrixType, class VectorType>
-inline void scale_degrees_forward(MatrixType &SH2amp_mapping, const VectorType &coefs) {
+inline void scale_degrees_forward(MatrixType &SH2amp_mapping, const VectorType &coefs, bool sym = true) {
   ssize_t l = 0, nl = 1;
+  ssize_t l_factor = (sym ? 2 : 1);
   for (ssize_t col = 0; col < SH2amp_mapping.cols(); ++col) {
     if (col >= nl) {
       l++;
-      nl = NforL(2 * l);
+      nl = NforL(l_factor * l, sym);
     }
     SH2amp_mapping.col(col) *= coefs[l];
   }
@@ -108,12 +111,13 @@ inline void scale_degrees_forward(MatrixType &SH2amp_mapping, const VectorType &
 
 //! scale the coefficients of each SH degree by the corresponding value in \a coefs
 template <typename MatrixType, class VectorType>
-inline void scale_degrees_inverse(MatrixType &amp2SH_mapping, const VectorType &coefs) {
+inline void scale_degrees_inverse(MatrixType &amp2SH_mapping, const VectorType &coefs, bool sym = true) {
   ssize_t l = 0, nl = 1;
+  ssize_t l_factor = (sym ? 2 : 1);
   for (ssize_t row = 0; row < amp2SH_mapping.rows(); ++row) {
     if (row >= nl) {
       l++;
-      nl = NforL(2 * l);
+      nl = NforL(l_factor * l, sym);
     }
     amp2SH_mapping.row(row) *= coefs[l];
   }
@@ -128,26 +132,27 @@ inline Eigen::Matrix<typename VectorType::Scalar, Eigen::Dynamic, 1> invert(cons
   return ret;
 }
 
-
 template <class VectorType>
 inline typename VectorType::Scalar value(const VectorType &coefs,
                                          typename VectorType::Scalar cos_inclination,
                                          typename VectorType::Scalar cos_azimuth,
                                          typename VectorType::Scalar sin_azimuth,
-                                         int lmax) {
+                                         int lmax,
+                                         bool sym = true) {
   using value_type = typename VectorType::Scalar;
+  ssize_t l_step = (sym ? 2 : 1);
   value_type amplitude = 0.0;
   Eigen::Matrix<value_type, Eigen::Dynamic, 1, 0, 64> AL(lmax + 1);
   Legendre::Plm_sph(AL, lmax, 0, cos_inclination);
-  for (int l = 0; l <= lmax; l += 2)
-    amplitude += AL[l] * coefs[index(l, 0)];
+  for (int l = 0; l <= lmax; l += l_step)
+    amplitude += AL[l] * coefs[index(l, 0, sym)];
   value_type c0(1.0), s0(0.0);
   for (int m = 1; m <= lmax; m++) {
     Legendre::Plm_sph(AL, lmax, m, cos_inclination);
     value_type c = c0 * cos_azimuth - s0 * sin_azimuth; // std::cos(m*azimuth)
     value_type s = s0 * cos_azimuth + c0 * sin_azimuth; // std::sin(m*azimuth)
-    for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2)
-      amplitude += AL[l] * Math::sqrt2 * (c * coefs[index(l, m)] + s * coefs[index(l, -m)]);
+    for (int l = (sym && (m & 1) ? m + 1 : m); l <= lmax; l += l_step)
+      amplitude += AL[l] * Math::sqrt2 * (c * coefs[index(l, m, sym)] + s * coefs[index(l, -m, sym)]);
     c0 = c;
     s0 = s;
   }
@@ -158,38 +163,41 @@ template <class VectorType>
 inline typename VectorType::Scalar value(const VectorType &coefs,
                                          typename VectorType::Scalar cos_inclination,
                                          typename VectorType::Scalar azimuth,
-                                         int lmax) {
-  return value(coefs, cos_inclination, std::cos(azimuth), std::sin(azimuth), lmax);
+                                         int lmax,
+                                         bool sym = true) {
+  return value(coefs, cos_inclination, std::cos(azimuth), std::sin(azimuth), lmax, sym);
 }
 
 template <class VectorType1, class VectorType2>
-inline typename VectorType1::Scalar value(const VectorType1 &coefs, const VectorType2 &unit_dir, int lmax) {
+inline typename VectorType1::Scalar
+value(const VectorType1 &coefs, const VectorType2 &unit_dir, int lmax, bool sym = true) {
   using value_type = typename VectorType1::Scalar;
   value_type rxy = std::sqrt(pow2(unit_dir[1]) + pow2(unit_dir[0]));
   value_type cp = (rxy) ? unit_dir[0] / rxy : 1.0;
   value_type sp = (rxy) ? unit_dir[1] / rxy : 0.0;
-  return value(coefs, unit_dir[2], cp, sp, lmax);
+  return value(coefs, unit_dir[2], cp, sp, lmax, sym);
 }
 
 template <class VectorType1, class VectorType2>
-inline VectorType1 &delta(VectorType1 &delta_vec, const VectorType2 &unit_dir, int lmax) {
+inline VectorType1 &delta(VectorType1 &delta_vec, const VectorType2 &unit_dir, int lmax, bool sym = true) {
   using value_type = typename VectorType1::Scalar;
-  delta_vec.resize(NforL(lmax));
+  ssize_t l_step = (sym ? 2 : 1);
+  delta_vec.resize(NforL(lmax, sym));
   value_type rxy = std::sqrt(pow2(unit_dir[1]) + pow2(unit_dir[0]));
   value_type cp = (rxy) ? unit_dir[0] / rxy : 1.0;
   value_type sp = (rxy) ? unit_dir[1] / rxy : 0.0;
   Eigen::Matrix<value_type, Eigen::Dynamic, 1, 0, 64> AL(lmax + 1);
   Legendre::Plm_sph(AL, lmax, 0, unit_dir[2]);
-  for (int l = 0; l <= lmax; l += 2)
-    delta_vec[index(l, 0)] = AL[l];
+  for (int l = 0; l <= lmax; l += l_step)
+    delta_vec[index(l, 0, sym)] = AL[l];
   value_type c0(1.0), s0(0.0);
   for (int m = 1; m <= lmax; m++) {
     Legendre::Plm_sph(AL, lmax, m, unit_dir[2]);
     value_type c = c0 * cp - s0 * sp;
     value_type s = s0 * cp + c0 * sp;
-    for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2) {
-      delta_vec[index(l, m)] = AL[l] * Math::sqrt2 * c;
-      delta_vec[index(l, -m)] = AL[l] * Math::sqrt2 * s;
+    for (int l = (sym && (m & 1) ? m + 1 : m); l <= lmax; l += l_step) {
+      delta_vec[index(l, m, sym)] = AL[l] * Math::sqrt2 * c;
+      delta_vec[index(l, -m, sym)] = AL[l] * Math::sqrt2 * s;
     }
     c0 = c;
     s0 = s;
@@ -267,7 +275,8 @@ template <class VectorType, class UnitVectorType>
 inline typename VectorType::Scalar get_peak(const VectorType &sh,
                                             int lmax,
                                             UnitVectorType &unit_init_dir,
-                                            PrecomputedAL<typename VectorType::Scalar> *precomputer = nullptr) {
+                                            PrecomputedAL<typename VectorType::Scalar> *precomputer = nullptr,
+                                            bool sym = true) {
   static const default_type max_dir_change = 0.2;
   static const default_type angle_tolerance = 1e-4;
   using value_type = typename VectorType::Scalar;
@@ -276,7 +285,7 @@ inline typename VectorType::Scalar get_peak(const VectorType &sh,
     value_type az = std::atan2(unit_init_dir[1], unit_init_dir[0]);
     value_type el = std::acos(unit_init_dir[2]);
     value_type amplitude, dSH_del, dSH_daz, d2SH_del2, d2SH_deldaz, d2SH_daz2;
-    derivatives(sh, lmax, el, az, amplitude, dSH_del, dSH_daz, d2SH_del2, d2SH_deldaz, d2SH_daz2, precomputer);
+    derivatives(sh, lmax, el, az, amplitude, dSH_del, dSH_daz, d2SH_del2, d2SH_deldaz, d2SH_daz2, precomputer, sym);
 
     value_type del = sqrt(dSH_del * dSH_del + dSH_daz * dSH_daz);
     value_type daz = 0.0;
@@ -324,7 +333,8 @@ inline void derivatives(const VectorType &sh,
                         typename VectorType::Scalar &d2SH_del2,
                         typename VectorType::Scalar &d2SH_deldaz,
                         typename VectorType::Scalar &d2SH_daz2,
-                        PrecomputedAL<typename VectorType::Scalar> *precomputer) {
+                        PrecomputedAL<typename VectorType::Scalar> *precomputer,
+                        bool sym = true) {
   if (lmax < 0) {
     throw std::logic_error("lmax cannot be negative!");
   }
@@ -333,9 +343,10 @@ inline void derivatives(const VectorType &sh,
   const value_type sin_incl = std::sin(inclination);
   const value_type cos_incl = std::cos(inclination);
   bool atpole = sin_incl < 1e-4;
+  ssize_t l_step = (sym ? 2 : 1);
 
   dSH_del = dSH_daz = d2SH_del2 = d2SH_deldaz = d2SH_daz2 = 0.0;
-  VLA_MAX(AL, value_type, NforL_mpos(lmax), 64);
+  VLA_MAX(AL, value_type, NforL_mpos(lmax, sym), 64);
 
   if (precomputer) {
     PrecomputedFraction<value_type> f;
@@ -345,45 +356,46 @@ inline void derivatives(const VectorType &sh,
     Eigen::Matrix<value_type, Eigen::Dynamic, 1, 0, 64> buf(lmax + 1);
     for (int m = 0; m <= lmax; m++) {
       Legendre::Plm_sph(buf, lmax, m, cos_incl);
-      for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2)
-        AL[index_mpos(l, m)] = buf[l];
+      for (int l = (sym && (m & 1) ? m + 1 : m); l <= lmax; l += l_step)
+        AL[index_mpos(l, m, sym)] = buf[l];
     }
   }
 
-  amplitude = sh[index(0, 0)] * AL[index_mpos(0, 0)];
-  for (int l = 2; l <= lmax; l += 2) {
-    const value_type &v(sh[index(l, 0)]);
-    amplitude += v * AL[index_mpos(l, 0)];
-    dSH_del += v * sqrt(static_cast<value_type>(l * (l + 1))) * AL[index_mpos(l, 1)];
+  amplitude = sh[index(0, 0, sym)] * AL[index_mpos(0, 0, sym)];
+  for (int l = l_step; l <= lmax; l += l_step) {
+    const value_type &v(sh[index(l, 0, sym)]);
+    amplitude += v * AL[index_mpos(l, 0, sym)];
+    dSH_del += v * sqrt(static_cast<value_type>(l * (l + 1))) * AL[index_mpos(l, 1, sym)];
     d2SH_del2 += v *
-                 (sqrt(static_cast<value_type>(l * (l + 1) * (l - 1) * (l + 2))) * AL[index_mpos(l, 2)] -
-                  l * (l + 1) * AL[index_mpos(l, 0)]) /
+                 (sqrt(static_cast<value_type>(l * (l + 1) * (l - 1) * (l + 2))) * AL[index_mpos(l, 2, sym)] -
+                  l * (l + 1) * AL[index_mpos(l, 0, sym)]) /
                  2.0;
   }
 
   for (int m = 1; m <= lmax; m++) {
     value_type caz = Math::sqrt2 * std::cos(m * azimuth);
     value_type saz = Math::sqrt2 * std::sin(m * azimuth);
-    for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2) {
-      const value_type &vp(sh[index(l, m)]);
-      const value_type &vm(sh[index(l, -m)]);
-      amplitude += (vp * caz + vm * saz) * AL[index_mpos(l, m)];
+    for (int l = (sym && (m & 1) ? m + 1 : m); l <= lmax; l += l_step) {
+      const value_type &vp(sh[index(l, m, sym)]);
+      const value_type &vm(sh[index(l, -m, sym)]);
+      amplitude += (vp * caz + vm * saz) * AL[index_mpos(l, m, sym)];
 
-      value_type tmp = sqrt(static_cast<value_type>((l + m) * (l - m + 1))) * AL[index_mpos(l, m - 1)];
+      value_type tmp = sqrt(static_cast<value_type>((l + m) * (l - m + 1))) * AL[index_mpos(l, m - 1, sym)];
       if (l > m)
-        tmp -= sqrt(static_cast<value_type>((l - m) * (l + m + 1))) * AL[index_mpos(l, m + 1)];
+        tmp -= sqrt(static_cast<value_type>((l - m) * (l + m + 1))) * AL[index_mpos(l, m + 1, sym)];
       tmp /= -2.0;
       dSH_del += (vp * caz + vm * saz) * tmp;
 
-      value_type tmp2 = -((l + m) * (l - m + 1) + (l - m) * (l + m + 1)) * AL[index_mpos(l, m)];
+      value_type tmp2 = -((l + m) * (l - m + 1) + (l - m) * (l + m + 1)) * AL[index_mpos(l, m, sym)];
       if (m == 1)
-        tmp2 -= sqrt(static_cast<value_type>((l + m) * (l - m + 1) * (l + m - 1) * (l - m + 2))) * AL[index_mpos(l, 1)];
+        tmp2 -= sqrt(static_cast<value_type>((l + m) * (l - m + 1) * (l + m - 1) * (l - m + 2))) *
+                AL[index_mpos(l, 1, sym)];
       else
-        tmp2 +=
-            sqrt(static_cast<value_type>((l + m) * (l - m + 1) * (l + m - 1) * (l - m + 2))) * AL[index_mpos(l, m - 2)];
+        tmp2 += sqrt(static_cast<value_type>((l + m) * (l - m + 1) * (l + m - 1) * (l - m + 2))) *
+                AL[index_mpos(l, m - 2, sym)];
       if (l > m + 1)
-        tmp2 +=
-            sqrt(static_cast<value_type>((l - m) * (l + m + 1) * (l - m - 1) * (l + m + 2))) * AL[index_mpos(l, m + 2)];
+        tmp2 += sqrt(static_cast<value_type>((l - m) * (l + m + 1) * (l - m - 1) * (l + m + 2))) *
+                AL[index_mpos(l, m + 2, sym)];
       tmp2 /= 4.0;
       d2SH_del2 += (vp * caz + vm * saz) * tmp2;
 
@@ -391,8 +403,8 @@ inline void derivatives(const VectorType &sh,
         dSH_daz += (vm * caz - vp * saz) * tmp;
       else {
         d2SH_deldaz += m * (vm * caz - vp * saz) * tmp;
-        dSH_daz += m * (vm * caz - vp * saz) * AL[index_mpos(l, m)];
-        d2SH_daz2 -= (vp * caz + vm * saz) * m * m * AL[index_mpos(l, m)];
+        dSH_daz += m * (vm * caz - vp * saz) * AL[index_mpos(l, m, sym)];
+        d2SH_daz2 -= (vp * caz + vm * saz) * m * m * AL[index_mpos(l, m, sym)];
       }
     }
   }
@@ -404,13 +416,40 @@ inline void derivatives(const VectorType &sh,
   }
 }
 
+//! determines whether the input is symmetric or asymmetric
+/*! Let N be the number of SH coefficients. For some values of N, there exists both
+ * l_sym such that N = NforL(l_sym, sym = True) and l_asym such that
+ * N = NforL(l_asym, sym = False). The first two are N = 1 and N = 36. If N = 1, we
+ * know that the input is symmetric. If N = 36, l_asym = 5 and l_sym = 7. But as
+ * l_sym is odd while it should be even, we consider the input to be asymmetric.
+ * The next ambiguity appears when N = 1225 (l_asym = 34, l_sym = 48). Hence, the
+ * output of this function can be considered valid for N < 1225, or always valid if
+ * we assume that such a high value will never be encountered. */
+template <class ImageType> bool is_symetric(const ImageType &H) {
+  bool symmetric_input = true;
+  size_t n_SH = H.size(3);
+  double sqrt_n_SH = std::sqrt(n_SH);
+  if (n_SH != 1) {
+    // the input is asymmetric if and only if n_SH is a perfect square
+    symmetric_input = static_cast<size_t>(std::floor(sqrt_n_SH)) != static_cast<size_t>(std::ceil(sqrt_n_SH));
+  }
+  return symmetric_input;
+}
+
 //! convenience function to check if an input image can contain SH coefficients
-template <class ImageType> void check(const ImageType &H) {
+template <class ImageType> void check(const ImageType &H, bool authorize_asym = false) {
   if (H.ndim() < 4)
     throw Exception("image \"" + H.name() + "\" does not contain SH coefficients - not 4D");
-  size_t l = LforN(H.size(3));
-  if (l % 2 || NforL(l) != static_cast<size_t>(H.size(3)))
-    throw Exception("image \"" + H.name() + "\" does not contain SH coefficients - unexpected number of coefficients");
+  if (!authorize_asym) {
+    size_t l = LforN(H.size(3));
+    if (l % 2 || NforL(l) != static_cast<size_t>(H.size(3)))
+      throw Exception("image \"" + H.name() +
+                      "\" does not contain SH coefficients - unexpected number of coefficients");
+  } else {
+    if (!feasible_N(H.size(3), true) && !feasible_N(H.size(3), false))
+      throw Exception("image \"" + H.name() +
+                      "\" does not contain SH coefficients - unexpected number of coefficients");
+  }
 }
 /** @} */
 
