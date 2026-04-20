@@ -28,8 +28,8 @@ namespace MR::Math::SH {
 template <typename ValueType> class WeightedTransform : public TransformBase<ValueType> {
 public:
   template <class MatrixType, class VectorType>
-  WeightedTransform(const MatrixType &dirs, const VectorType &weights, int lmax)
-      : TransformBase<ValueType>(dirs, lmax) {
+  WeightedTransform(const MatrixType &dirs, const VectorType &weights, int lmax, bool sym = true)
+      : TransformBase<ValueType>(dirs, lmax, sym) {
     TransformBase<ValueType>::iSHT = wls(TransformBase<ValueType>::SHT, weights);
   }
 };

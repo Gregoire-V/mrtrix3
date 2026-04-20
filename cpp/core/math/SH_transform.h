@@ -18,8 +18,8 @@
 
 #include <string>
 
-#include "math/SH_transform_base.h"
 #include "exception.h"
+#include "math/SH_transform_base.h"
 #include "math/least_squares.h"
 #include "math/legendre.h"
 #include "mrtrix.h"
@@ -28,13 +28,14 @@ namespace MR::Math::SH {
 
 template <typename ValueType> class Transform : public TransformBase<ValueType> {
 public:
-  template <class MatrixType> Transform(const MatrixType &dirs, int lmax) : TransformBase<ValueType>(dirs, lmax) {
+  template <class MatrixType>
+  Transform(const MatrixType &dirs, int lmax, bool sym = true) : TransformBase<ValueType>(dirs, lmax, sym) {
     TransformBase<ValueType>::iSHT = pinv(TransformBase<ValueType>::SHT);
   }
 
   template <class VectorType> void set_filter(const VectorType &filter) {
-    scale_degrees_forward(TransformBase<ValueType>::SHT, invert(filter));
-    scale_degrees_inverse(TransformBase<ValueType>::iSHT, filter);
+    scale_degrees_forward(TransformBase<ValueType>::SHT, invert(filter), TransformBase<ValueType>::symmetric);
+    scale_degrees_inverse(TransformBase<ValueType>::iSHT, filter, TransformBase<ValueType>::symmetric);
   }
 };
 

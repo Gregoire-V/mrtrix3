@@ -29,7 +29,9 @@ template <typename ValueType> class TransformBase {
 public:
   using matrix_type = Eigen::Matrix<ValueType, Eigen::Dynamic, Eigen::Dynamic>;
 
-  template <class MatrixType> TransformBase(const MatrixType &dirs, int lmax) : SHT(init_transform(dirs, lmax)) {}
+  template <class MatrixType>
+  TransformBase(const MatrixType &dirs, int lmax, bool sym = true)
+      : symetric(sym), SHT(init_transform(dirs, lmax, sym)) {}
 
   template <class VectorType1, class VectorType2> void A2SH(VectorType1 &sh, const VectorType2 &amplitudes) const {
     assert(iSHT.rows() > 0);
@@ -47,6 +49,7 @@ public:
 
 protected:
   matrix_type SHT, iSHT;
+  bool symetric;
 };
 
 } // namespace MR::Math::SH
