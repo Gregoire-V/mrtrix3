@@ -18,21 +18,34 @@
 
 #include <string>
 
-#include "math/SH_precomputed_fraction.h"
 #include "exception.h"
+#include "math/SH_precomputed_fraction.h"
 #include "math/least_squares.h"
 #include "math/legendre.h"
 #include "mrtrix.h"
 
 namespace MR::Math::SH {
 
+// Needed to avoid an ambiguity between int and bool for PrecomputedAL constructors (otherwise doesn't compile)
+struct SymFlag {
+  SymFlag(bool sym) : value(sym) {}
+  bool value;
+};
+
 //! Precomputed Associated Legrendre Polynomials - used to speed up SH calculation
 template <typename ValueType> class PrecomputedAL {
 public:
   using value_type = ValueType;
 
-  PrecomputedAL() : lmax(0), ndir(0), nAL(0), inc(0.0) {}
-  PrecomputedAL(int up_to_lmax, int num_dir = 512) { init(up_to_lmax, num_dir); }
+  // PrecomputedAL(bool sym = true) : lmax(0), ndir(0), nAL(0), inc(0.0), symmetric(sym) {}
+  // PrecomputedAL(int up_to_lmax, bool sym) : symmetric(sym) { init(up_to_lmax, 512); }
+  // PrecomputedAL(int up_to_lmax, int num_dir = 512, bool sym = true) : symmetric(sym) { init(up_to_lmax, num_dir); }
+
+  PrecomputedAL(SymFlag sf = SymFlag(true)) : lmax(0), ndir(0), nAL(0), inc(0.0), symmetric(sf.value) {}
+  PrecomputedAL(int up_to_lmax, SymFlag sf) : PrecomputedAL(up_to_lmax, 512, sf) {}
+  PrecomputedAL(int up_to_lmax, int num_dir = 512, SymFlag sf = SymFlag(true)) : symmetric(sf.value) {
+    init(up_to_lmax, num_dir);
+  }
 
   bool operator!() const { return AL.empty(); }
   operator bool() const { return AL.size(); }
@@ -40,18 +53,19 @@ public:
   void init(int up_to_lmax, int num_dir = 512) {
     lmax = up_to_lmax;
     ndir = num_dir;
-    nAL = NforL_mpos(lmax);
+    nAL = NforL_mpos(lmax, symmetric);
     inc = Math::pi / (ndir - 1);
     AL.resize(ndir * nAL);
     Eigen::Matrix<value_type, Eigen::Dynamic, 1, 0, 64> buf(lmax + 1);
+    int l_step = (symmetric ? 2 : 1);
 
     for (int n = 0; n < ndir; n++) {
       typename std::vector<value_type>::iterator p = AL.begin() + n * nAL;
       value_type cos_el = std::cos(n * inc);
       for (int m = 0; m <= lmax; m++) {
         Legendre::Plm_sph(buf, lmax, m, cos_el);
-        for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2)
-          p[index_mpos(l, m)] = buf[l];
+        for (int l = (symmetric && (m & 1) ? m + 1 : m); l <= lmax; l += l_step)
+          p[index_mpos(l, m, symmetric)] = buf[l];
       }
     }
   }
@@ -82,12 +96,15 @@ public:
       v += f.f2 * f.p2[i];
     return v;
   }
-  ValueType get(const PrecomputedFraction<ValueType> &f, int l, int m) const { return get(f, index_mpos(l, m)); }
+  ValueType get(const PrecomputedFraction<ValueType> &f, int l, int m) const {
+    return get(f, index_mpos(l, m, symmetric));
+  }
 
   void get(ValueType *dest, const PrecomputedFraction<ValueType> &f) const {
-    for (int l = 0; l <= lmax; l += 2) {
+    int l_step = (symmetric ? 2 : 1);
+    for (int l = 0; l <= lmax; l += l_step) {
       for (int m = 0; m <= l; m++) {
-        int i = index_mpos(l, m);
+        int i = index_mpos(l, m, symmetric);
         dest[i] = get(f, i);
       }
     }
@@ -101,14 +118,15 @@ public:
     ValueType cp = (rxy) ? unit_dir[0] / rxy : 1.0;
     ValueType sp = (rxy) ? unit_dir[1] / rxy : 0.0;
     ValueType v = 0.0;
-    for (int l = 0; l <= lmax; l += 2)
-      v += get(f, l, 0) * val[index(l, 0)];
+    int l_step = (symmetric ? 2 : 1);
+    for (int l = 0; l <= lmax; l += l_step)
+      v += get(f, l, 0) * val[index(l, 0, symmetric)];
     ValueType c0(1.0), s0(0.0);
     for (int m = 1; m <= lmax; m++) {
       ValueType c = c0 * cp - s0 * sp;
       ValueType s = s0 * cp + c0 * sp;
-      for (int l = ((m & 1) ? m + 1 : m); l <= lmax; l += 2)
-        v += get(f, l, m) * Math::sqrt2 * (c * val[index(l, m)] + s * val[index(l, -m)]);
+      for (int l = (symmetric && (m & 1) ? m + 1 : m); l <= lmax; l += l_step)
+        v += get(f, l, m) * Math::sqrt2 * (c * val[index(l, m, symmetric)] + s * val[index(l, -m, symmetric)]);
       c0 = c;
       s0 = s;
     }
@@ -117,6 +135,7 @@ public:
 
 protected:
   int lmax, ndir, nAL;
+  bool symmetric;
   ValueType inc;
   std::vector<ValueType> AL;
 };
