@@ -89,7 +89,10 @@ void usage() {
 
   + Option ("fast",
             "use lookup table to compute associated Legendre polynomials"
-            " (faster, but approximate).");
+            " (faster, but approximate).")
+
+  + Option ("asym", 
+            "authorize asymmetric inputs (namely with both even and odd orders SH coefficients).");
 
   REFERENCES
   + "Jeurissen, B.; Leemans, A.; Tournier, J.-D.; Jones, D.K.; Sijbers, J. "
@@ -289,10 +292,17 @@ private:
 };
 
 void run() {
+
+  // example code to handle the asym option, which will need to be modified
+  auto opt = get_options("asym");
+  bool sym = opt.empty();
+  std::cout << sym << std::endl;
+  exit(0); // temporary command to check the value of the sym variable more easily
+
   auto SH_data = Image<value_type>::open(argument[0]).with_direct_io(3);
   Math::SH::check(SH_data);
 
-  auto opt = get_options("mask");
+  opt = get_options("mask");
   Image<bool> mask_data;
   if (!opt.empty())
     mask_data = Image<bool>::open(opt[0][0]);
