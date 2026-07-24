@@ -302,7 +302,7 @@ void run() {
   auto SH_data = Image<value_type>::open(argument[0]).with_direct_io(3);
   Math::SH::check(SH_data);
 
-  auto opt = get_options("mask");
+  opt = get_options("mask");
   Image<bool> mask_data;
   if (!opt.empty())
     mask_data = Image<bool>::open(opt[0][0]);
